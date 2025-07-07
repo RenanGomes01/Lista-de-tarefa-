@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lista de Tarefas com Firebase</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style> body { font-family: 'Inter', sans-serif; } </style>
+</head>
+<body class="bg-gray-100">
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        // Importa as funções que você precisa dos SDKs do Firebase
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+
+        // =======================================================================
+        // A SUA CONFIGURAÇÃO DO FIREBASE FOI INSERIDA AQUI
+        // =======================================================================
+        const firebaseConfig = {
+          apiKey: "AIzaSyBpqJiA4qHlyRwZtvuM1sxJLPMmZQE",
+          authDomain: "lista-de-tarefas-a7cb9.firebaseapp.com",
+          projectId: "lista-de-tarefas-a7cb9",
+          storageBucket: "lista-de-tarefas-a7cb9.appspot.com",
+          messagingSenderId: "838992221157",
+          appId: "1:838992221157:web:6b8d5e424a1e1191a9950c",
+          measurementId: "G-NETY5773BR"
+        };
+
+        // Componente principal da aplicação
+        function App() {
+            const [tasks, setTasks] = React.useState([]);
+            const [input, setInput] = React.useState('');
+            const [loading, setLoading] = React.useState(true);
+            const [db, setDb] = React.useState(null);
+            const [error, setError] = React.useState(null);
+
+            // Hook para inicializar o Firebase
+            React.useEffect(() => {
+                try {
+                    const app = initializeApp(firebaseConfig);
+                    const firestoreDb = getFirestore(app);
+                    setDb(firestoreDb);
+                } catch (e) {
+                    console.error("Erro ao inicializar o Firebase", e);
+                    setError("Falha ao inicializar o Firebase. Verifique a configuração.");
+                }
+            }, []);
+
+            // Hook para ler os dados do Firestore em tempo real
+            React.useEffect(() => {
+                // Só executa se o db estiver inicializado
+                if (!db) return;
+
+                const tasksCollectionRef = collection(db, "tasks");
+                
+                const unsubscribe = onSnapshot(tasksCollectionRef, 
+                    (snapshot) => {
+                        // Sucesso na conexão
+                        setError(null); // Limpa erros anteriores
+                        const tasksData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+                        setTasks(tasksData);
+                        setLoading(false);
+                    },
+                    (err) => {
+                        // Erro na conexão
+                        console.error("Erro de conexão com o Firestore: ", err);
+                        if (err.code === 'unavailable' || err.code === 'permission-denied') {
+                             setError(
+                                <div>
+                                    <p className="font-bold">Ação necessária no Firebase!</p>
+                                    <p>Não foi possível conectar ao banco de dados. Siga estes passos:</p>
+                                    <ol className="list-decimal list-inside mt-2">
+                                        <li>Vá para o <a href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/firestore`} target="_blank" rel="noopener noreferrer" className="underline">Console do Firebase</a>.</li>
+                                        <li>No menu lateral, clique em <strong>Cloud Firestore</strong>.</li>
+                                        <li>Clique em <strong>"Criar banco de dados"</strong>.</li>
+                                        <li>Inicie no <strong>modo de teste</strong> e clique em "Avançar".</li>
+                                        <li>Escolha uma localização e clique em "Ativar".</li>
+                                    </ol>
+                                </div>
+                             );
+                        } else {
+                            setError(`Erro no Firebase: ${err.message}`);
+                        }
+                        setLoading(false);
+                    }
+                );
+                
+                // Limpa o listener ao desmontar o componente
+                return () => unsubscribe();
+            }, [db]);
+
+            // Função para adicionar uma nova tarefa
+            const addTask = async (e) => {
+                e.preventDefault();
+                if (input.trim() === '' || !db) return;
+                const tasksCollectionRef = collection(db, "tasks");
+                await addDoc(tasksCollectionRef, { text: input, completed: false });
+                setInput('');
+            };
+
+            // Função para marcar uma tarefa como completa/incompleta
+            const toggleComplete = async (task) => {
+                if (!db) return;
+                const taskDoc = doc(db, "tasks", task.id);
+                await updateDoc(taskDoc, { completed: !task.completed });
+            };
+
+            // Função para deletar uma tarefa
+            const deleteTask = async (id) => {
+                if (!db) return;
+                const taskDoc = doc(db, "tasks", id);
+                await deleteDoc(taskDoc);
+            };
+
+            return (
+                <div className="max-w-xl mx-auto mt-16 bg-white rounded-lg shadow-lg p-8">
+                    <h1 className="text-3xl font-bold text-center text-gray-800 mb-6">Lista de Tarefas</h1>
+                    
+                    <form onSubmit={addTask} className="flex gap-2 mb-6">
+                        <input
+                            type="text"
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            placeholder="Adicionar nova tarefa..."
+                            className="flex-grow p-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 transition"
+                        />
+                        <button type="submit" className="bg-blue-500 text-white font-bold px-6 py-3 rounded-lg hover:bg-blue-600 transition">
+                            Adicionar
+                        </button>
+                    </form>
+
+                    {loading && <p className="text-center text-gray-500">Carregando tarefas...</p>}
+
+                    {error && (
+                        <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-4 my-4 rounded-lg" role="alert">
+                           {error}
+                        </div>
+                    )}
+
+                    {!loading && !error && (
+                        <ul className="space-y-3">
+                            {tasks.map((task) => (
+                                <li key={task.id} className={`flex items-center justify-between p-4 rounded-lg transition ${task.completed ? 'bg-green-100 text-gray-500' : 'bg-gray-50'}`}>
+                                    <span 
+                                        className={`cursor-pointer ${task.completed ? 'line-through' : ''}`}
+                                        onClick={() => toggleComplete(task)}
+                                    >
+                                        {task.text}
+                                    </span>
+                                    <button onClick={() => deleteTask(task.id)} className="text-red-500 hover:text-red-700 font-bold">
+                                        Excluir
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            );
+        }
+
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
+        root.render(<App />);
+    </script>
+</body>
+</html>
